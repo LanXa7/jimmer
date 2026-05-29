@@ -11,7 +11,8 @@ internal class LikePredicate(
     private val negative: Boolean,
     private var expression: KExpression<String>,
     private val insensitive: Boolean,
-    private val pattern: String
+    private val pattern: String,
+    private val escaped: Boolean,
 ) : AbstractKPredicate() {
 
     constructor(
@@ -24,7 +25,10 @@ internal class LikePredicate(
         expression,
         insensitive,
         pattern.let {
-            var str = it
+            if (it.isEmpty()) {
+                return@let it
+            }
+            var str = escape(it)
             if (!mode.isStartExact && !str.startsWith("%")) {
                 str = "%$str"
             }
@@ -35,11 +39,12 @@ internal class LikePredicate(
                 str = str.lowercase()
             }
             str
-        }
+        },
+        escape(pattern) != pattern
     )
 
     override fun not(): AbstractKPredicate =
-        LikePredicate(!negative, expression, insensitive, pattern)
+        LikePredicate(!negative, expression, insensitive, pattern, escaped)
 
     override fun precedence(): Int = 0
 
@@ -65,6 +70,9 @@ internal class LikePredicate(
                 }
             )
             .rawVariable(pattern)
+        if (escaped) {
+            builder.sql(" escape '\\'")
+        }
     }
 
     override fun determineHasVirtualPredicate(): Boolean =
@@ -73,5 +81,13 @@ internal class LikePredicate(
     override fun onResolveVirtualPredicate(ctx: AstContext): Ast {
         expression = ctx.resolveVirtualPredicate(expression)
         return this
+    }
+
+    companion object {
+        private fun escape(pattern: String): String =
+            pattern
+                .replace("\\", "\\\\")
+                .replace("_", "\\_")
+                .replace("%", "\\%")
     }
 }

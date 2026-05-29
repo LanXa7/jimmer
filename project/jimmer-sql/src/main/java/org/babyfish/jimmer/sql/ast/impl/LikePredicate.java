@@ -4,7 +4,6 @@ import org.babyfish.jimmer.sql.ast.LikeMode;
 import org.babyfish.jimmer.sql.ast.Predicate;
 import org.babyfish.jimmer.sql.ast.StringExpression;
 import org.babyfish.jimmer.sql.ast.impl.render.AbstractSqlBuilder;
-import org.babyfish.jimmer.sql.runtime.SqlBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -19,37 +18,52 @@ class LikePredicate extends AbstractPredicate {
 
     private final boolean negative;
 
+    private final boolean escaped;
+
     public static LikePredicate of(
             StringExpression expression,
             String pattern,
             boolean insensitive,
             LikeMode likeMode
     ) {
-        if (pattern == null) {
-            pattern = "";
+        if (pattern.isEmpty()) {
+            return new LikePredicate(expression, "", insensitive, false, false);
         }
-        if (!likeMode.isStartExact() && !pattern.startsWith("%")) {
-            pattern = '%' + pattern;
+
+        String escapedPattern = escape(pattern);
+        boolean escaped = !escapedPattern.equals(pattern);
+
+        if (!likeMode.isStartExact() && !escapedPattern.startsWith("%")) {
+            escapedPattern = '%' + escapedPattern;
         }
-        if (!likeMode.isEndExact() && !pattern.endsWith("%")) {
-            pattern = pattern + '%';
+        if (!likeMode.isEndExact() && !escapedPattern.endsWith("%")) {
+            escapedPattern = escapedPattern + '%';
         }
         if (insensitive) {
-            pattern = pattern.toLowerCase();
+            escapedPattern = escapedPattern.toLowerCase();
         }
-        return new LikePredicate(expression, pattern, insensitive, false);
+        return new LikePredicate(expression, escapedPattern, insensitive, false, escaped);
+    }
+
+    private static String escape(String pattern) {
+        return pattern
+                .replace("\\", "\\\\")
+                .replace("_", "\\_")
+                .replace("%", "\\%");
     }
 
     private LikePredicate(
             StringExpression expression,
             String pattern,
             boolean insensitive,
-            boolean negative
+            boolean negative,
+            boolean escaped
     ) {
         this.expression = expression;
         this.pattern = pattern;
         this.insensitive = insensitive;
         this.negative = negative;
+        this.escaped = escaped;
     }
 
     @Override
@@ -63,7 +77,8 @@ class LikePredicate extends AbstractPredicate {
                 expression,
                 pattern,
                 insensitive,
-                !negative
+                !negative,
+                escaped
         );
     }
 
@@ -91,6 +106,9 @@ class LikePredicate extends AbstractPredicate {
                 builder.sql(negative ? " not like " : " like ");
             }
             builder.rawVariable(pattern);
+            if (escaped) {
+                builder.sql(" escape '\\'");
+            }
         }
     }
 
@@ -110,11 +128,11 @@ class LikePredicate extends AbstractPredicate {
         if (this == o) return true;
         if (!(o instanceof LikePredicate)) return false;
         LikePredicate that = (LikePredicate) o;
-        return insensitive == that.insensitive && negative == that.negative && expression.equals(that.expression) && pattern.equals(that.pattern);
+        return insensitive == that.insensitive && negative == that.negative && escaped == that.escaped && expression.equals(that.expression) && pattern.equals(that.pattern);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(expression, pattern, insensitive, negative);
+        return Objects.hash(expression, pattern, insensitive, negative, escaped);
     }
 }
